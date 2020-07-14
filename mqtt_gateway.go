@@ -23,6 +23,8 @@ var (
 	nodesrv         = flag.String("nodesrv", "127.0.0.1:9990", "Node ID Server")
 	topic           = flag.String("topic", "#", "MQTT Topic, default(#)")
 	mqttsrv         = flag.String("mqtt", "", "MQTT Broker address")
+	onlysub         = flag.Bool("onlysub", false, "Subscribe only(MQTT->Synerex)")
+	onlypub         = flag.Bool("onlypub", false, "Publish only(Synerex->MQTT)")
 	idlist          []uint64
 	spMap           map[uint64]*sxutil.SupplyOpts
 	mu              sync.Mutex
@@ -50,6 +52,10 @@ func handleMQTTMessage(clt mqtt.Client) { // Synerex -> MQTT
 }
 
 func supplyMQTTCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
+	if sp.SenderId == uint64(clt.ClientID) {
+		// ignore my message.
+		return
+	}
 	rcd := &sxmqtt.MQTTRecord{}
 	err := proto.Unmarshal(sp.Cdata.Entity, rcd)
 	if err == nil { // get MQTT Record
@@ -131,8 +137,10 @@ func listenMQTTBroker() mqtt.Client {
 		log.Fatalf("MQTT connection error: %s", token.Error())
 	}
 
-	if subscribeToken := clt.Subscribe(*topic, 0, myHandler); subscribeToken.Wait() && subscribeToken.Error() != nil {
-		log.Fatalf("MQTT subscribe error: %s", subscribeToken.Error())
+	if *onlypub == false {
+		if subscribeToken := clt.Subscribe(*topic, 0, myHandler); subscribeToken.Wait() && subscribeToken.Error() != nil {
+			log.Fatalf("MQTT subscribe error: %s", subscribeToken.Error())
+		}
 	}
 
 	return clt
@@ -163,14 +171,18 @@ func main() {
 	argJson := fmt.Sprintf("{Clt:MQTT-Gtwy}")
 	sclient := sxutil.NewSXServiceClient(client, pbase.MQTT_GATEWAY_SVC, argJson)
 
-	go mqttBrokerHandler(sclient) // msgCh -> Synerex
+	if *onlypub == false {
+		go mqttBrokerHandler(sclient) // msgCh -> Synerex
+	}
 	wg.Add(1)
 	clt := listenMQTTBroker() // MQTT -> msgCh
 
-	go handleMQTTMessage(clt) //  mqChan -> MQTT
-	wg.Add(1)
-	go subscribeMQTTSupply(sclient) // Synerex -> mqChan
-	wg.Add(1)
+	if *onlysub == false {
+		go handleMQTTMessage(clt) //  mqChan -> MQTT
+		wg.Add(1)
+		go subscribeMQTTSupply(sclient) // Synerex -> mqChan
+		wg.Add(1)
+	}
 
 	wg.Wait()
 	sxutil.CallDeferFunctions() // cleanup!
