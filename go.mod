@@ -1,4 +1,4 @@
-module mqtt-gateway
+module mqtt_gateway
 
 go 1.14
 
