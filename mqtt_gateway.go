@@ -65,21 +65,21 @@ func supplyMQTTCallback(clt *sxutil.SXServiceClient, sp *api.Supply) {
 
 func reconnectClient(client *sxutil.SXServiceClient) {
 	mu.Lock()
-	if client.Client != nil {
-		client.Client = nil
+	if client.SXClient != nil {
+		client.SXClient = nil
 		log.Printf("Client reset \n")
 	}
 	mu.Unlock()
 	time.Sleep(5 * time.Second) // wait 5 seconds to reconnect
 	mu.Lock()
-	if client.Client == nil {
+	if client.SXClient == nil {
 		newClt := sxutil.GrpcConnectServer(sxServerAddress)
 		if newClt != nil {
 			log.Printf("Reconnect server [%s]\n", sxServerAddress)
-			client.Client = newClt
+			client.SXClient = newClt
 		}
 	} else { // someone may connect!
-		log.Printf("Use reconnected server\n", sxServerAddress)
+		log.Printf("Use reconnected server [%s]\n", sxServerAddress)
 	}
 	mu.Unlock()
 }
